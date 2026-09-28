@@ -158,6 +158,10 @@ The primary way to configure Freerouting is through a JSON settings file. This f
 - **`plane_as_obstacle`**: Boolean controlling whether conduction areas (copper pours) act as obstacles blocking foreign traces from passing through. Default is `false` (foreign traces may route through fills).
 - **`start_ripup_costs`**: Cost factor for ripping up existing traces.
 - **`automatic_neckdown`**: Enables or disables automatic neckdown of traces.
+- **`strict_drc`**: When `true` (the default), a newly routed connection whose traces or vias
+  introduce a clearance violation is ripped up again and retried in a later pass instead of being
+  kept. Set `--router.strict_drc=false` to keep such connections (faster on very large boards, but
+  may leave violations). Violations between items that were only shoved aside are not yet caught.
 - **`layers`**: An array of layer-specific settings (transient, typically set via CLI or loaded from board files). Each element contains:
     - **`routable`**: Boolean indicating if the layer is active/routable by the autorouter.
     - **`preferred_direction_horizontal`**: Boolean indicating if the preferred direction on this layer is horizontal.

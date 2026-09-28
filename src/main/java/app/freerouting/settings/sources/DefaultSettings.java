@@ -172,7 +172,9 @@ public class DefaultSettings implements SettingsSource {
     settings.planeNets = new String[0];
     settings.planeAsObstacle = false;
     settings.neckWidthUm = DEFAULT_NECK_WIDTH_UM;
-    settings.strictDrc = false;
+    // On by default: benchmarks showed it removes router-introduced clearance violations at no
+    // completion cost and ~2% CPU (a new connection that violates is ripped and retried).
+    settings.strictDrc = true;
 
     // layers is left null intentionally –
     // they will be populated by DsnFileSettings (from the DSN layer count) and then
