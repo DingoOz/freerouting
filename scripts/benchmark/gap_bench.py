@@ -200,6 +200,38 @@ def report(a):
                       f"{a.head}=({h['unrouted']},{h['clearance']}) {h['wall_s']:>7}s  {f}")
 
 
+def best(a):
+    """Best-of-variants ("portfolio") report: per fixture, the best result across the given labels."""
+    labels = a.labels.split(",")
+    by = defaultdict(dict)
+    for r in load():
+        if r["label"] in labels:
+            by[r["fixture"]][r["label"]] = r
+    fixtures = [f for f, v in by.items() if all(l in v for l in labels)]
+    # Rank: no router-caused violation first, then fewest unrouted, then fewest violations.
+    key = lambda r: (1, 10**9, 10**9) if r["unrouted"] is None else (r["clearance"] > 0, r["unrouted"], r["clearance"])
+    wins = defaultdict(int)
+    print(f"{len(fixtures)} fixtures with all of {labels}\n")
+    print("| | fully routed | sum unrouted | sum clearance |")
+    print("|---|--:|--:|--:|")
+    for l in labels:
+        rs = [by[f][l] for f in fixtures if by[f][l]["unrouted"] is not None]
+        print(f"| {l} | {sum(r['unrouted'] == 0 for r in rs)} | {sum(r['unrouted'] for r in rs)} | {sum(r['clearance'] for r in rs)} |")
+    picks = []
+    for f in fixtures:
+        top = min(key(by[f][l]) for l in labels)
+        winners = [l for l in labels if key(by[f][l]) == top]
+        for l in winners:
+            wins[l] += 1
+        picks.append(by[f][winners[0]])
+    ok = [r for r in picks if r["unrouted"] is not None]
+    print(f"| **best of {len(labels)}** | {sum(r['unrouted'] == 0 for r in ok)} | {sum(r['unrouted'] for r in ok)} | "
+          f"{sum(r['clearance'] for r in ok)} |")
+    print("\nFixtures where each label is (one of) the best:")
+    for l in sorted(labels, key=lambda l: -wins[l]):
+        print(f"  {wins[l]:4}  {l}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = p.add_subparsers(dest="cmd", required=True)
@@ -221,13 +253,15 @@ def main():
     r.add_argument("--jvm-arg", action="append", default=[], help="extra JVM argument, e.g. -Dx=y (repeatable)")
     r.add_argument("--no-optimizer", action="store_true", help="skip the optimizer (faster; completion unaffected)")
     sp.add_parser("recount", help="re-read saved DRC reports into runs.jsonl")
+    b = sp.add_parser("best", help="best-of-variants report across labels")
+    b.add_argument("labels", help="comma-separated labels, e.g. head,sw-via25,sw-rip200")
     q = sp.add_parser("report")
     q.add_argument("--base", default="v19")
     q.add_argument("--head", default="wip")
     a = p.parse_args()
     global JAVA
     JAVA = getattr(a, "java", "java")
-    {"select": select, "run": run, "report": report, "recount": recount}[a.cmd](a)
+    {"select": select, "run": run, "report": report, "recount": recount, "best": best}[a.cmd](a)
 
 
 if __name__ == "__main__":
