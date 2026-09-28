@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE / "results" / "comparison-v19-gap"
 RUNS = OUT / "runs.jsonl"
 DEFAULT_DRC_JAR = HERE.parent.parent / "build" / "libs" / "freerouting-current-executable.jar"
+JAVA = "java"
 
 
 def quality_key(q):
@@ -53,7 +54,7 @@ def select(a):
 def drc(jar, dsn, ses, report, timeout):
     if not ses.exists():
         return None, None
-    subprocess.run(["java", "-Djava.awt.headless=true", "-jar", str(jar), "-de", f"{dsn}+{ses}", "-drc", str(report), "--gui.enabled=false"],
+    subprocess.run([JAVA, "-Djava.awt.headless=true", "-jar", str(jar), "-de", f"{dsn}+{ses}", "-drc", str(report), "--gui.enabled=false"],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
     rep = json.load(open(report))
     unconnected = [u for u in rep.get("unconnectedItems") or rep.get("unconnected_items") or []
@@ -68,9 +69,11 @@ def run_one(a, label, jar, kind, rel):
     ses, log = OUT / "outputs" / f"{stem}.ses", OUT / "logs" / f"{stem}.log"
     ses.unlink(missing_ok=True)
     v19 = "1.9" in jar.name
-    cmd = ["java", f"-Xmx{a.heap}", "-Dsun.stdout.buffered=false"] + ([] if v19 else ["-Djava.awt.headless=true"])
+    cmd = [JAVA, f"-Xmx{a.heap}", "-Dsun.stdout.buffered=false"] + ([] if v19 else ["-Djava.awt.headless=true"])
     cmd += ["-jar", str(jar), "-de", str(dsn), "-do", str(ses),
             f"--router.max_threads={a.threads}", f"--router.job_timeout={a.timeout}",
+            # current builds ignore the flat flag above; without these the optimizer uses all cores
+            f"--router.autorouter.max_threads={a.threads}", f"--router.optimizer.max_threads={a.threads}",
             "--router.optimizer.enabled=true", "--router.fanout.enabled=true",
             f"--router.autorouter.max_passes={a.max_passes}", "--router.autorouter.enabled=true"]
     if v19:
@@ -180,10 +183,13 @@ def main():
     r.add_argument("--threads", type=int, default=1)
     r.add_argument("--max-passes", type=int, default=500)
     r.add_argument("--timeout", default="00:10:00")
+    r.add_argument("--java", default="java", help="java executable (current builds need Java 25)")
     q = sp.add_parser("report")
     q.add_argument("--base", default="v19")
     q.add_argument("--head", default="wip")
     a = p.parse_args()
+    global JAVA
+    JAVA = getattr(a, "java", "java")
     {"select": select, "run": run, "report": report}[a.cmd](a)
 
 
