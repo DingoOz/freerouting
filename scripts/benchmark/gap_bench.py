@@ -56,30 +56,40 @@ def drc(jar, dsn, ses, report, timeout):
         return None, None
     subprocess.run([JAVA, "-Djava.awt.headless=true", "-jar", str(jar), "-de", f"{dsn}+{ses}", "-drc", str(report), "--gui.enabled=false"],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
+    return count_drc(report)
+
+
+def count_drc(report):
+    """(unconnected, clearance) from a DRC json; clearance includes holeClearance etc."""
     rep = json.load(open(report))
     unconnected = [u for u in rep.get("unconnectedItems") or rep.get("unconnected_items") or []
                    if u.get("type") in ("unconnectedItems", "unconnected_items")]
-    clearance = [v for v in rep.get("violations") or [] if "clearance" in str(v.get("type"))]
+    # Only violations involving routed copper (trace/via) count; pin-pin and pin-outline
+    # violations are pre-existing in the input design and identical for every router.
+    clearance = [v for v in rep.get("violations") or [] if "clearance" in str(v.get("type")).lower()
+                 and any(str(i.get("description", "")).startswith(("Trace", "Via")) for i in v.get("items") or [])]
     return len(unconnected), len(clearance)
 
 
 def run_one(a, label, jar, kind, rel):
     dsn = HERE / "fixtures" / rel
-    stem = f"{label}--{rel.replace('/', '--').replace(' ', '_').replace('+', '_')}"
+    stem = output_stem(label, rel)
     ses, log = OUT / "outputs" / f"{stem}.ses", OUT / "logs" / f"{stem}.log"
     ses.unlink(missing_ok=True)
     v19 = "1.9" in jar.name
     cmd = [JAVA, f"-Xmx{a.heap}", "-Dsun.stdout.buffered=false"] + ([] if v19 else ["-Djava.awt.headless=true"])
+    cmd += a.jvm_arg
     cmd += ["-jar", str(jar), "-de", str(dsn), "-do", str(ses),
             f"--router.max_threads={a.threads}", f"--router.job_timeout={a.timeout}",
             # current builds ignore the flat flag above; without these the optimizer uses all cores
             f"--router.autorouter.max_threads={a.threads}", f"--router.optimizer.max_threads={a.threads}",
-            "--router.optimizer.enabled=true", "--router.fanout.enabled=true",
+            f"--router.optimizer.enabled={'false' if a.no_optimizer else 'true'}", "--router.fanout.enabled=true",
             f"--router.autorouter.max_passes={a.max_passes}", "--router.autorouter.enabled=true"]
     if v19:
         cmd += ["-dct", "0"]  # v1.9 has no headless mode; skip its 20 s auto-start countdown dialog
     else:
         cmd += ["--api_server.enabled=false", "--gui.enabled=false"]
+    cmd += a.arg
     h, m, s = map(int, a.timeout.split(":"))
     t0, state = time.time(), "COMPLETED"
     with open(log, "w") as lf:
@@ -94,8 +104,12 @@ def run_one(a, label, jar, kind, rel):
         unrouted, clearance = drc(a.drc_jar, dsn, ses, ses.with_suffix(".drc.json"), 600)
     except Exception as e:  # DRC failures are recorded, not fatal
         unrouted, clearance, state = None, None, f"{state}+DRC_FAIL:{type(e).__name__}"
+    try:
+        passes = sum(1 for ln in open(log, errors="ignore") if "pass #" in ln and ("Auto-routing" in ln or "Auto-router" in ln))
+    except OSError:
+        passes = None
     return dict(label=label, jar=jar.name, kind=kind, fixture=rel, state=state, wall_s=wall,
-                unrouted=unrouted, clearance=clearance)
+                unrouted=unrouted, clearance=clearance, passes=passes)
 
 
 def run(a):
@@ -131,6 +145,25 @@ def _run(a, todo, done):
             out.flush()
             print(f"[{i}/{len(todo)}] {r['label']:>6} {r['state']:<10} unrouted={r['unrouted']} "
                   f"clearance={r['clearance']} {r['wall_s']}s  {r['fixture']}", file=sys.stderr)
+
+
+def output_stem(label, rel):
+    return f"{label}--{rel.replace('/', '--').replace(' ', '_').replace('+', '_')}"
+
+
+def recount(a):
+    """Re-read every saved DRC report so all rows use the current counting rules."""
+    rows, changed = load(), 0
+    for r in rows:
+        rep = OUT / "outputs" / f"{output_stem(r['label'], r['fixture'])}.drc.json"
+        if rep.exists():
+            u, c = count_drc(rep)
+            changed += (u, c) != (r["unrouted"], r["clearance"])
+            r["unrouted"], r["clearance"] = u, c
+    with open(RUNS, "w") as out:
+        for r in rows:
+            out.write(json.dumps(r) + "\n")
+    print(f"recounted {len(rows)} rows, {changed} changed", file=sys.stderr)
 
 
 def load():
@@ -184,13 +217,17 @@ def main():
     r.add_argument("--max-passes", type=int, default=500)
     r.add_argument("--timeout", default="00:10:00")
     r.add_argument("--java", default="java", help="java executable (current builds need Java 25)")
+    r.add_argument("--arg", action="append", default=[], help="extra Freerouting argument (repeatable)")
+    r.add_argument("--jvm-arg", action="append", default=[], help="extra JVM argument, e.g. -Dx=y (repeatable)")
+    r.add_argument("--no-optimizer", action="store_true", help="skip the optimizer (faster; completion unaffected)")
+    sp.add_parser("recount", help="re-read saved DRC reports into runs.jsonl")
     q = sp.add_parser("report")
     q.add_argument("--base", default="v19")
     q.add_argument("--head", default="wip")
     a = p.parse_args()
     global JAVA
     JAVA = getattr(a, "java", "java")
-    {"select": select, "run": run, "report": report}[a.cmd](a)
+    {"select": select, "run": run, "report": report, "recount": recount}[a.cmd](a)
 
 
 if __name__ == "__main__":
