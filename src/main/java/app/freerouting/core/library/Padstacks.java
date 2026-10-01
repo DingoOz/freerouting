@@ -31,6 +31,36 @@ public class Padstacks implements Serializable {
     return null;
   }
 
+  /**
+   * Resolves a padstack name referenced from a design file (pin, via, wiring or session scope). An
+   * exact (case-insensitive) match always wins. Only if there is none, dotted numeric suffixes such
+   * as {@code "Name.1"} are ignored on both sides, so that references to a de-duplicated definition
+   * still resolve. Stored names are never altered: decimal digits are part of many real padstack
+   * names (e.g. {@code "Via[0-1]_635:304.8_um"}), and stripping them would make distinct padstacks
+   * collide and break name matching against {@code use_via} references.
+   */
+  public Padstack getByReference(String name) {
+    if (name == null) {
+      return null;
+    }
+    Padstack exactMatch = get(name);
+    if (exactMatch != null) {
+      return exactMatch;
+    }
+    String strippedName = stripDottedNumbers(name);
+    for (Padstack currentPadstack : padstacks) {
+      if (currentPadstack != null
+          && stripDottedNumbers(currentPadstack.name).equalsIgnoreCase(strippedName)) {
+        return currentPadstack;
+      }
+    }
+    return null;
+  }
+
+  private static String stripDottedNumbers(String name) {
+    return name.replaceAll("\\.\\d+", "");
+  }
+
   /** Returns the padstack with the specified index. Padstack IDs start at 1. */
   public Padstack get(int padstackId) {
     if (padstackId <= 0 || padstackId > padstacks.size()) {

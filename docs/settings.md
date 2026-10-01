@@ -159,6 +159,10 @@ The primary way to configure Freerouting is through a JSON settings file. This f
 - **`grid_fallback`**: Boolean. When `true`, a grid-based fallback stage runs after the autorouter and before the optimizer. It tries the connections the autorouter left unrouted, ripping up and rerouting other nets where needed, and keeps a change only if the board ends up more complete with no new clearance violations. It uses at most 120 s and at most half of the remaining job time, and it is skipped when `router.autorouter.max_items` caps the routing work. Default is `true`; disable it with `--router.grid_fallback=false`.
 - **`start_ripup_costs`**: Cost factor for ripping up existing traces.
 - **`automatic_neckdown`**: Enables or disables automatic neckdown of traces.
+- **`strict_drc`**: When `true` (the default), a newly routed connection whose traces or vias
+  introduce a clearance violation is ripped up again and retried in a later pass instead of being
+  kept. Set `--router.strict_drc=false` to keep such connections (faster on very large boards, but
+  may leave violations). Violations between items that were only shoved aside are not yet caught.
 - **`layers`**: An array of layer-specific settings (transient, typically set via CLI or loaded from board files). Each element contains:
     - **`routable`**: Boolean indicating if the layer is active/routable by the autorouter.
     - **`preferred_direction_horizontal`**: Boolean indicating if the preferred direction on this layer is horizontal.
