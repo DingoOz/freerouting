@@ -236,6 +236,10 @@ on, `gap_bench.py run ... --jar-args "grid2=--router.grid_fallback=true"`, 6 job
 | sum of clearance violations | 1 | 1 |
 | total wall time | 6031 s | 7537 s |
 
+Re-run after merging the parity branch (strict_drc on, padstack and net-teardown fixes), same 33
+boards, flag off vs on: 11 better / 0 worse, fully routed 14 -> 20, unrouted nets 49 -> 33,
+clearance violations 0 -> 0, wall time 2566 s -> 3037 s.
+
 Development harness: `GridProbeTest` runs only the stage on routed DSN + SES pairs
 (`GRID_PROBE_LIST=<file of "dsn<TAB>ses"> ./gradlew test --rerun --tests '*GridProbeTest' -PincludeSlowTests=true`).
 Note: the main router is not deterministic under CPU load, so compare flag off vs on from the same run.
