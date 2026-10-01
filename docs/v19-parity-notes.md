@@ -70,3 +70,27 @@ Step 3 is 266 runs, about 30–40 minutes on 12 cores.
 
 `settings.gradle` bumps `foojay-resolver-convention` 0.8.0 → 1.0.0; 0.8.0 fails on Gradle 9.7.1
 (`JvmVendorSpec.IBM_SEMERU` removed). Logged in `ERRORS.md`.
+
+## Grid fallback stage (`router.grid_fallback`, on by default)
+
+Branch `feature/grid-fallback-router`. After the batch autorouter, `autoroute.grid.GridFallbackRouter`
+tries the connections that are still open: grid A* (`GridPathFinder`) from both ends, then grid
+A* with negotiated rip-up of other nets' unfixed traces/vias, rerouting the ripped nets with the
+maze router or the grid. Each attempt is an undo-stack transaction kept only if incomplete nets
+(then connections) strictly drop and the full clearance count does not grow. Budget: at most 120 s
+and at most half of the remaining job time; skipped when `router.autorouter.max_items` is set.
+
+Result on the 33 PCBench boards where a current build leaves connections open (same jar, flag off vs
+on, `gap_bench.py run ... --jar-args "grid2=--router.grid_fallback=true"`, 6 jobs in parallel):
+
+| | flag off | flag on |
+|---|--:|--:|
+| boards better / worse / equal | | 24 / 0 / 9 |
+| fully routed | 0 | 7 |
+| sum of unrouted nets | 109 | 65 |
+| sum of clearance violations | 1 | 1 |
+| total wall time | 6031 s | 7537 s |
+
+Development harness: `GridProbeTest` runs only the stage on routed DSN + SES pairs
+(`GRID_PROBE_LIST=<file of "dsn<TAB>ses"> ./gradlew test --rerun --tests '*GridProbeTest' -PincludeSlowTests=true`).
+Note: the main router is not deterministic under CPU load, so compare flag off vs on from the same run.

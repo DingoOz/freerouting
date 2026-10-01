@@ -173,6 +173,7 @@ public class DefaultSettings implements SettingsSource {
     settings.planeAsObstacle = false;
     settings.neckWidthUm = DEFAULT_NECK_WIDTH_UM;
     settings.strictDrc = false;
+    settings.gridFallback = true;
 
     // layers is left null intentionally –
     // they will be populated by DsnFileSettings (from the DSN layer count) and then

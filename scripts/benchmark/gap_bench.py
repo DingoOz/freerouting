@@ -73,6 +73,7 @@ def run_one(a, label, jar, kind, rel):
             f"--router.max_threads={a.threads}", f"--router.job_timeout={a.timeout}",
             "--router.optimizer.enabled=true", "--router.fanout.enabled=true",
             f"--router.autorouter.max_passes={a.max_passes}", "--router.autorouter.enabled=true"]
+    cmd += a.jar_args.get(label, [])
     if v19:
         cmd += ["-dct", "0"]  # v1.9 has no headless mode; skip its 20 s auto-start countdown dialog
     else:
@@ -99,6 +100,7 @@ def run(a):
     (OUT / "outputs").mkdir(parents=True, exist_ok=True)
     (OUT / "logs").mkdir(parents=True, exist_ok=True)
     jars = [(l, Path(p).resolve()) for l, p in (j.split("=", 1) for j in a.jar)]
+    a.jar_args = {l: x.split() for l, x in (j.split("=", 1) for j in a.jar_args or [])}
     fixtures = [ln.rstrip("\n").split("\t", 1) for ln in open(a.fixtures) if ln.strip() and not ln.startswith("#")]
     done = {(r["label"], r["fixture"]) for r in load()}
     todo = [(l, j, k, f) for k, f in fixtures for l, j in jars if (l, f) not in done]
@@ -174,6 +176,7 @@ def main():
     r = sp.add_parser("run")
     r.add_argument("fixtures")
     r.add_argument("--jar", action="append", required=True, help="label=path/to.jar (repeatable)")
+    r.add_argument("--jar-args", action="append", help='label="--extra --cli=args" for that jar (repeatable)')
     r.add_argument("--drc-jar", type=Path, default=DEFAULT_DRC_JAR, help="jar used to DRC every .ses")
     r.add_argument("-j", "--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 3))
     r.add_argument("--heap", default="2g")
