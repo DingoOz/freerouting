@@ -59,3 +59,13 @@
 - **Root cause:** The grid fallback completed a connection after the autorouter snapshot, so `optimizerStartsFromAutorouterBestBoard` saw 1 incomplete connection vs 0.
 - **Fix applied:** After the fallback keeps a change, the pipeline refreshes `autorouter.after` from the board and adds the stage time to the autorouter phase duration.
 - **Prevention rule:** Any stage that edits the board between two phase snapshots must refresh the earlier phase's `after` snapshot (or record its own phase).
+
+### Time-budgeted stage overruns because inner steps ignore the deadline — 2026-10-02
+
+- **Severity:** Medium
+- **Category:** Logic
+- **File(s):** `src/main/java/app/freerouting/autoroute/grid/GridFallbackRouter.java`
+- **Pattern:** A stage with a wall-clock budget that checks its deadline only between top-level attempts while each attempt runs several searches with their own fixed time limits (here 10 s grid searches and 2 s maze routes).
+- **Root cause:** On the slower CI runner the grid fallback was still running at the 60 s job timeout of `Display8DigitRoutingTest`, about 25 s past its budget, so the fixture test timed out.
+- **Fix applied:** Every grid search and maze route now gets `min(own limit, time left in the stage)`, and the per-direction and per-pitch loops check the deadline.
+- **Prevention rule:** In a budgeted stage, derive every inner time limit from the remaining stage time, not from a constant; test on a run where the board actually uses the whole budget.

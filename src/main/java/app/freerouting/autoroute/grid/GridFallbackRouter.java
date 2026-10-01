@@ -199,10 +199,13 @@ public final class GridFallbackRouter {
                 airline.fromCorner));
     for (AirLine direction : directions) {
       for (double pitchFactor : PITCH_FACTORS) {
+        if (outOfTime()) {
+          return false;
+        }
         GridPathFinder finder =
             new GridPathFinder(
                 board, settings, direction, GridPathFinder.Mode.ALL_OBSTACLES, pitchFactor, null);
-        GridPathFinder.Result result = finder.search(MAX_EXPANSIONS, SEARCH_BUDGET_MS);
+        GridPathFinder.Result result = finder.search(MAX_EXPANSIONS, searchBudget());
         trace(
             "plain_search",
             "pitch=" + pitchFactor + " " + result.reason() + " expansions=" + result.expansions(),
@@ -238,7 +241,7 @@ public final class GridFallbackRouter {
               GridPathFinder.Mode.RIPUP,
               pitchFactor,
               item -> ripCost(item, Set.of()) + penalty.getOrDefault(item.getNetNumber(0), 0.0));
-      GridPathFinder.Result result = finder.search(MAX_EXPANSIONS, SEARCH_BUDGET_MS);
+      GridPathFinder.Result result = finder.search(MAX_EXPANSIONS, searchBudget());
       Set<Integer> ripNets = new TreeSet<>();
       result.ripped().forEach(item -> ripNets.add(item.getNetNumber(0)));
       trace(
@@ -412,7 +415,11 @@ public final class GridFallbackRouter {
   private boolean mazeRoute(Item item, int idBefore) {
     var result =
         board.autoroute(
-            item, settings, settings.getViaCosts(), stop, new TimeLimit(VICTIM_ROUTE_MS));
+            item,
+            settings,
+            settings.getViaCosts(),
+            stop,
+            new TimeLimit((int) Math.min(VICTIM_ROUTE_MS, remainingMillis())));
     board.clearTransientAutorouteState();
     if (result.state == AutorouteAttemptState.ROUTED && !hasNewViolations(idBefore)) {
       return true;
@@ -425,6 +432,9 @@ public final class GridFallbackRouter {
   private Set<Integer> gridReroute(
       AirLine open, GridPathFinder.Mode mode, Set<Integer> protectedNets, int idBefore) {
     for (double pitchFactor : PITCH_FACTORS) {
+      if (outOfTime()) {
+        return null;
+      }
       GridPathFinder finder =
           new GridPathFinder(
               board,
@@ -433,7 +443,7 @@ public final class GridFallbackRouter {
               mode,
               pitchFactor,
               protectedNets == null ? null : item -> ripCost(item, protectedNets));
-      GridPathFinder.Result r = finder.search(MAX_EXPANSIONS, SEARCH_BUDGET_MS);
+      GridPathFinder.Result r = finder.search(MAX_EXPANSIONS, searchBudget());
       if (!r.found()) {
         continue;
       }
@@ -510,6 +520,15 @@ public final class GridFallbackRouter {
 
   private static String key(AirLine airline) {
     return airline.net.netNumber + ":" + airline.fromItem.getId() + ":" + airline.toItem.getId();
+  }
+
+  private long remainingMillis() {
+    return Math.max(0, deadline - System.currentTimeMillis());
+  }
+
+  /** Every search stops at the stage deadline, so the stage cannot overrun its budget. */
+  private long searchBudget() {
+    return Math.min(SEARCH_BUDGET_MS, remainingMillis());
   }
 
   private boolean outOfTime() {
