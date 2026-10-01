@@ -272,7 +272,7 @@ public class Network extends ScopeKeyword {
       Padstack viaPadstack = board.library.getViaPadstack(padstackName);
       if (viaPadstack == null) {
         // The padstack may not yet be inserted into the list of via padstacks
-        viaPadstack = board.library.padstacks.get(padstackName);
+        viaPadstack = board.library.padstacks.getByReference(padstackName);
         if (viaPadstack == null) {
           FRLogger.warn(
               "Network.read_via_info: padstack not found at '"
@@ -695,10 +695,11 @@ public class Network extends ScopeKeyword {
     int defaultViaClClass =
         netClass.defaultItemClearanceClasses.get(DefaultItemClearanceClasses.ItemClass.VIA);
     for (String currentViaName : useVia) {
+      Padstack usedPadstack = board.library.padstacks.getByReference(currentViaName);
       for (int i = 0; i < board.rules.viaInfos.count(); i++) {
         ViaInfo currentViaInfo = board.rules.viaInfos.get(i);
         if (currentViaInfo.getClearanceClassIndex() == defaultViaClClass) {
-          if (currentViaInfo.getPadstack().name.equals(currentViaName)) {
+          if (currentViaInfo.getPadstack() == usedPadstack) {
             newViaRule.appendVia(currentViaInfo);
           }
         }
@@ -1289,9 +1290,7 @@ public class Network extends ScopeKeyword {
       int foundPadstackCount = 0;
       for (int i = 0; i < viaPadstacks.length; i++) {
         String currentPadstackName = it.next();
-        String cleanedName =
-            currentPadstackName != null ? currentPadstackName.replaceAll("\\.\\d+", "") : null;
-        Padstack currentPadstack = board.library.padstacks.get(cleanedName);
+        Padstack currentPadstack = board.library.padstacks.getByReference(currentPadstackName);
         if (currentPadstack != null) {
           viaPadstacks[foundPadstackCount] = currentPadstack;
           ++foundPadstackCount;

@@ -290,20 +290,10 @@ final class AutoroutePassRunner {
                 currentItem, passNo, autorouterResult.state, autorouterResult.details);
             router.job.logDebug("Autorouter " + autorouterResult.details);
             int failureCount = router.board.failureLog.getFailureCount(currentItem);
-            if (failureCount >= 2) {
-              int netNo = currentItem.getNetNumber(i);
-              List<Item> tracesToRip = new ArrayList<>();
-              for (Item netItem : router.board.getConnectableItems(netNo)) {
-                if ((netItem instanceof Trace || netItem instanceof Via)
-                    && !netItem.isUserFixed()
-                    && netItem.netCount() == 1) {
-                  tracesToRip.add(netItem);
-                }
-              }
-              if (!tracesToRip.isEmpty()) {
-                router.board.removeItems(tracesToRip);
-              }
-            }
+            // Do not rip up the rest of the net when an item keeps failing. The failure count is
+            // cumulative across passes (and survives board restores), so doing so tore down large
+            // nets such as GND on every later failure and made the router oscillate (e.g. bt-tnc:
+            // 4 -> 36 -> 14 -> 27 unrouted). Rip-up of blocking items is left to the maze search.
             if (itemsToGoCount <= 5 || failureCount >= 3) {
               router.job.logDebug(
                   "Pass #"

@@ -532,6 +532,10 @@ public class HeadlessBoardManager implements BoardManager {
                     this.board.communication.unit));
 
     var matrix = this.board.rules.clearanceMatrix;
+    // The implicit default is a minimum edge clearance for boards whose DSN carries none (KiCad).
+    // It must never lower the clearance the board already demands from its outline, otherwise
+    // copper is routed closer to the edge than the board's own rules (and our DRC) allow.
+    int previousOutlineClassNo = outline.clearanceClassIndex();
     int boardEdgeClassNo = matrix.getNo(BOARD_EDGE_CLEARANCE_CLASS_NAME);
     if (boardEdgeClassNo < 0) {
       matrix.appendClass(BOARD_EDGE_CLEARANCE_CLASS_NAME);
@@ -545,8 +549,16 @@ public class HeadlessBoardManager implements BoardManager {
 
     for (int layer = 0; layer < matrix.getLayerCount(); layer++) {
       for (int classNo = 1; classNo < matrix.getClassCount(); classNo++) {
-        matrix.setValue(boardEdgeClassNo, classNo, layer, configuredClearanceBoardUnits);
-        matrix.setValue(classNo, boardEdgeClassNo, layer, configuredClearanceBoardUnits);
+        int edgeClearance = configuredClearanceBoardUnits;
+        if (usesDefaultEdgeClearanceValue
+            && previousOutlineClassNo != boardEdgeClassNo
+            && classNo != boardEdgeClassNo) {
+          edgeClearance =
+              Math.max(
+                  edgeClearance, matrix.getValue(previousOutlineClassNo, classNo, layer, false));
+        }
+        matrix.setValue(boardEdgeClassNo, classNo, layer, edgeClearance);
+        matrix.setValue(classNo, boardEdgeClassNo, layer, edgeClearance);
       }
     }
 

@@ -86,13 +86,15 @@ public class BoardOutline extends Item implements Serializable {
     return result;
   }
 
+  // Nets with a pin on or outside the outline. Called for every outline hit during maze search, so
+  // it must stay O(1): the cache is dropped explicitly on every pin/outline mutation (insert,
+  // remove, move, net change, undo/redo; see BasicBoard.invalidateEdgePinNetCache) and is
+  // transient,
+  // so board copies rebuild it. Do not re-validate it by scanning the pins here.
   private transient Set<Integer> edgePinNets;
-  private transient int cachedItemCount = -1;
 
   private Set<Integer> getEdgePinNets() {
-    int currentItemCount = this.board != null ? this.board.getPins().size() : -1;
-    if (this.edgePinNets == null || this.cachedItemCount != currentItemCount) {
-      this.cachedItemCount = currentItemCount;
+    if (this.edgePinNets == null) {
       Set<Integer> set = new HashSet<>();
       if (this.board != null) {
         for (Pin pin : this.board.getPins()) {
@@ -131,7 +133,6 @@ public class BoardOutline extends Item implements Serializable {
   /** Invalidates cached edge pin nets when board geometry or pins change. */
   public void invalidateEdgePinNets() {
     this.edgePinNets = null;
-    this.cachedItemCount = -1;
   }
 
   @Override
