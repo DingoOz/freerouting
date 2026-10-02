@@ -333,13 +333,11 @@ public final class GridPathFinder {
     return cost;
   }
 
-  /** Inserts a found path as unfixed traces and vias and marks it for pull-tight. */
+  /** Inserts a found path as unfixed traces and vias. */
   public void insert(List<Step> path) {
-    board.startMarkingChangedArea();
     List<Point> run = new ArrayList<>();
     int runLayer = path.getFirst().layer();
     for (Step s : path) {
-      board.joinChangedArea(s.point().toFloat(), s.layer());
       if (s.layer() != runLayer) {
         insertRun(run, runLayer);
         board.insertVia(
@@ -357,11 +355,6 @@ public final class GridPathFinder {
       }
     }
     insertRun(run, runLayer);
-  }
-
-  /** Returns the trace costs of the routed net, for the pull-tight after insertion. */
-  public AutorouteControl.ExpansionCostFactor[] traceCosts() {
-    return ctrl.traceCosts;
   }
 
   private void insertRun(List<Point> run, int layer) {

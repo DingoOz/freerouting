@@ -69,3 +69,13 @@
 - **Root cause:** On the slower CI runner the grid fallback was still running at the 60 s job timeout of `Display8DigitRoutingTest`, about 25 s past its budget, so the fixture test timed out.
 - **Fix applied:** Every grid search and maze route now gets `min(own limit, time left in the stage)`, and the per-direction and per-pitch loops check the deadline.
 - **Prevention rule:** In a budgeted stage, derive every inner time limit from the remaining stage time, not from a constant; test on a run where the board actually uses the whole budget.
+
+### Pull-tight ignores its time limit on degenerate geometry — 2026-10-02
+
+- **Severity:** Medium
+- **Category:** API Misuse
+- **File(s):** `src/main/java/app/freerouting/autoroute/grid/GridFallbackRouter.java`
+- **Pattern:** Calling `RoutingBoard.optChangedArea(..., timeLimit)` inside a time-budgeted loop and trusting `timeLimit` to bound it. `TraceTightener` → `BasicBoard.normalizeTraces` → `PolylineTraceNormalization` recursion does not check the limit, so a single call can run for tens of seconds on boards with degenerate shapes.
+- **Root cause:** On `Issue229-display-8-digit-hc595.dsn` (degenerate keepout polygon) one pull-tight after a grid insert took over 20 s (seen with `jstack`), so the grid fallback overran its budget and the CI fixture test hit its 60 s job timeout.
+- **Fix applied:** The grid fallback no longer pulls its paths tight; the optimizer smooths them afterwards. On the 33-board A/B the result is unchanged (19 vs 20 fully routed, 34 vs 33 unrouted, 0 clearance) and 11% faster; the CI board's stage time went from over 20 s to 3.6 s.
+- **Prevention rule:** Do not rely on `optChangedArea`'s time limit inside a budgeted stage; when a stage overruns, take a `jstack` of the routing thread before guessing.

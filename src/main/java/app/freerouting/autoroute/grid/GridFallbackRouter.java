@@ -300,7 +300,7 @@ public final class GridFallbackRouter {
     // With the blockers gone the gridless maze router usually finds a cleaner path than the grid.
     boolean clean =
         (!victims.isEmpty() && mazeRoute(airline.fromItem, idBefore))
-            || insert(finder, r.path(), netNo, idBefore);
+            || insert(finder, r.path(), idBefore);
     if (clean) {
       Set<Integer> protectedNets = new HashSet<>(Set.of(netNo));
       for (int victim : victims) {
@@ -356,12 +356,13 @@ public final class GridFallbackRouter {
     return nets;
   }
 
-  /** Inserts a grid path, pulls it tight and reports whether it added no violations. */
-  private boolean insert(
-      GridPathFinder finder, List<GridPathFinder.Step> path, int net, int idBefore) {
+  /**
+   * Inserts a grid path and reports whether it added no violations. The path is not pulled tight
+   * here: the pull-tight does not honour its time limit on degenerate geometry, and the optimizer
+   * smooths the result afterwards.
+   */
+  private boolean insert(GridPathFinder finder, List<GridPathFinder.Step> path, int idBefore) {
     finder.insert(path);
-    board.optChangedArea(
-        new int[] {net}, null, settings.tracePullTightAccuracy, finder.traceCosts(), stop, 1000);
     return !hasNewViolations(idBefore);
   }
 
@@ -448,7 +449,7 @@ public final class GridFallbackRouter {
         continue;
       }
       Set<Integer> victims = rip(r.ripped());
-      if (insert(finder, r.path(), open.net.netNumber, idBefore)) {
+      if (insert(finder, r.path(), idBefore)) {
         return victims;
       }
       removeNewItems(idBefore);
