@@ -156,6 +156,7 @@ The primary way to configure Freerouting is through a JSON settings file. This f
 - **`plane_via_costs`**: Cost factor for using vias on plane layers.
 - **`plane_nets`**: Explicit array of net names to treat as power-plane nets, enabling plane-routing mode and discounted plane via costs for these nets.
 - **`plane_as_obstacle`**: Boolean controlling whether conduction areas (copper pours) act as obstacles blocking foreign traces from passing through. Default is `false` (foreign traces may route through fills).
+- **`grid_fallback`**: Boolean. When `true`, a grid-based fallback stage runs after the autorouter and before the optimizer. It tries the connections the autorouter left unrouted, ripping up and rerouting other nets where needed, and keeps a change only if the board ends up more complete with no new clearance violations. It uses at most 120 s and at most half of the remaining job time, and it is skipped when `router.autorouter.max_items` caps the routing work. Default is `true`; disable it with `--router.grid_fallback=false`.
 - **`start_ripup_costs`**: Cost factor for ripping up existing traces.
 - **`automatic_neckdown`**: Enables or disables automatic neckdown of traces.
 - **`strict_drc`**: When `true` (the default), a newly routed connection whose traces or vias

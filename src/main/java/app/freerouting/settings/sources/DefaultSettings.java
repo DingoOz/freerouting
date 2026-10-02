@@ -175,6 +175,7 @@ public class DefaultSettings implements SettingsSource {
     // On by default: benchmarks showed it removes router-introduced clearance violations at no
     // completion cost and ~2% CPU (a new connection that violates is ripped and retried).
     settings.strictDrc = true;
+    settings.gridFallback = true;
 
     // layers is left null intentionally –
     // they will be populated by DsnFileSettings (from the DSN layer count) and then

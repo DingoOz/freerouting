@@ -39,7 +39,7 @@ flowchart TD
         IO["**io.specctra**\nDSN / SES reader-writer"]
         BOARD["**board.model/facade/state/actions/trace + searchtree + optimize**\nLive board model · search trees · optimization"]
         RULES["**rules**\nNets · clearances"]
-        AR["**autoroute.pipeline + maze + expansion + drill + path**\nRouting stages · maze · expansion · path"]
+        AR["**autoroute.pipeline + maze + expansion + drill + path + grid**\nRouting stages · maze · expansion · path · grid fallback"]
         DRC["**drc**\nDesign-rule checking"]
         GEO["**geometry.planar**\nShapes · points · math"]
     end
@@ -84,7 +84,7 @@ Use the table below to jump to the package most likely to own the behavior you a
 | --- | --- |
 | DSN / SES file loading or writing | `app.freerouting.io.specctra` |
 | Board items, board state, or board-level helpers | `app.freerouting.board.model.items`, `app.freerouting.board.model.structure`, `app.freerouting.board.facade`, `app.freerouting.board.state`, `app.freerouting.board.actions`, and `app.freerouting.board.trace` |
-| Routing decisions, fanout, maze search, or optimization | `app.freerouting.autoroute.pipeline`, `app.freerouting.autoroute.maze`, `app.freerouting.autoroute.expansion`, `app.freerouting.autoroute.drill`, `app.freerouting.autoroute.path`, and `app.freerouting.board.optimize` |
+| Routing decisions, fanout, maze search, or optimization | `app.freerouting.autoroute.pipeline`, `app.freerouting.autoroute.maze`, `app.freerouting.autoroute.expansion`, `app.freerouting.autoroute.drill`, `app.freerouting.autoroute.path`, `app.freerouting.autoroute.grid`, and `app.freerouting.board.optimize` |
 | Nets, vias, clearance classes, or board rules | `app.freerouting.rules` |
 | Clearance violations or design-rule checks | `app.freerouting.drc` |
 | GUI windows, panels, menus, editor state, accessibility locators, or drawing | `app.freerouting.gui.windows.board`, `app.freerouting.gui.windows.routing`, `app.freerouting.gui.menus`, `app.freerouting.gui.board`, `app.freerouting.gui.controls`, `app.freerouting.gui.support`, `app.freerouting.gui.workspace`, `app.freerouting.gui.interactive`, `app.freerouting.gui.a11y`, and `app.freerouting.gui.rendering` |
@@ -187,6 +187,15 @@ Drill-page indexing and expansion-drill support used during maze expansion.
 ### `app.freerouting.autoroute.path`
 
 Found-connection reconstruction and insertion, including path connection value objects.
+
+### `app.freerouting.autoroute.grid`
+
+Grid fallback stage (`router.grid_fallback`, on by default). `GridFallbackRouter` runs after the batch
+autorouter and before the optimizer and tries the connections that are still open: grid A*
+(`GridPathFinder`) first, then grid A* with rip-up of other nets' unfixed traces and vias, rerouting
+the ripped nets with the gridless maze router or the grid. Each attempt is one undo-stack
+transaction that is kept only if it completes more of the board and none of its new items has a
+clearance violation.
 
 ### `app.freerouting.autoroute`
 
@@ -353,6 +362,8 @@ The autorouter is the "make it work" stage. It solves missing connections one at
     The new geometry is inserted into the board, temporary artifacts are removed, and the route is tightened so it fits better into nearby routing.
 
 The autorouter may also temporarily rip up nearby conflicting traces or vias if needed to find a legal route. Its job is to turn an incomplete design into one that is electrically connected.
+
+By default (`router.grid_fallback`), a grid fallback stage then tries the connections the autorouter left open. It searches a uniform grid, may rip up other nets and reroute them, and keeps a change only if more of the board is connected and no clearance violation was added.
 
 #### Optimizer
 

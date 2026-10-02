@@ -2,8 +2,12 @@ package app.freerouting.autoroute.pipeline;
 
 import app.freerouting.autoroute.events.BoardUpdatedEventListener;
 import app.freerouting.autoroute.events.TaskStateChangedEventListener;
+import app.freerouting.autoroute.grid.GridFallbackRouter;
 import app.freerouting.core.RoutingJob;
+import app.freerouting.core.RoutingJobState;
 import app.freerouting.core.RoutingStage;
+import app.freerouting.core.results.RoutingResultManifest;
+import app.freerouting.core.scoring.BoardStatistics;
 import app.freerouting.settings.RouterSettings;
 import java.util.ArrayList;
 import java.util.List;
@@ -104,6 +108,21 @@ public final class RoutingPipeline {
 
     if (routerEnabled && !this.job.thread.isStopAutoRouterRequested()) {
       this.autorouter.runBatchLoop();
+      // The batch loop requests an autorouter-only stop when it finishes, so only a full stop
+      // or a timed-out job skips the fallback. A max_items cap means the caller wants bounded
+      // routing work, so the fallback does not extend it.
+      Integer maxItems = this.job.routerSettings.autorouter.maxItems;
+      if (this.job.routerSettings.isGridFallback()
+          && (maxItems == null || maxItems <= 0 || maxItems == Integer.MAX_VALUE)
+          && !this.job.thread.isStopRequested()
+          && this.job.state != RoutingJobState.TIMED_OUT) {
+        this.job.board.finishAutoroute();
+        GridFallbackRouter.Outcome outcome =
+            GridFallbackRouter.run(
+                this.job.board, this.job.routerSettings, this.job.thread, this.job.timeoutAt);
+        this.job.logInfo(outcome.summary());
+        recordGridFallbackInAutorouterPhase(outcome);
+      }
     } else if (this.job.routerSettings.isFanoutEnabled()
         && !this.job.thread.isStopAutoRouterRequested()) {
       Integer originalMaxPasses = this.job.routerSettings.autorouter.maxPasses;
@@ -118,6 +137,23 @@ public final class RoutingPipeline {
     this.job.board.finishAutoroute();
     for (StageListener listener : this.stageListeners) {
       listener.afterRouting(this.autorouter);
+    }
+  }
+
+  /** The fallback is part of the routing stage, so the autorouter "after" snapshot includes it. */
+  private void recordGridFallbackInAutorouterPhase(GridFallbackRouter.Outcome outcome) {
+    RoutingResultManifest.PhaseDetail phase = this.job.resultPhaseMetrics.autorouter;
+    if (phase.after == null) {
+      return;
+    }
+    if (outcome.accepted() > 0) {
+      phase.after =
+          RoutingResultManifest.PhaseSnapshot.fromBoardStatistics(
+              new BoardStatistics(this.job.board), this.job.routerSettings, "current");
+      phase.after.score = phase.after.routerScore;
+    }
+    if (phase.durationSeconds != null) {
+      phase.durationSeconds += outcome.millis() / 1000.0f;
     }
   }
 

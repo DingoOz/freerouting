@@ -19,3 +19,63 @@
 - **Root cause:** The primary failure was the absence of any progress check between 01:43 and 07:11 during a session the agent had been asked to supervise alone. The trigger was a minor script bug: the validation queue waited with `while pgrep -f "queue4.sh"`, and the shell that launched it had `queue4.sh` in its own command line, so the loop matched itself forever after the real job finished. Any single check of the benchmark logs in those 5.5 hours would have shown no output since 01:43.
 - **Fix applied:** Killed the stuck loop at 07:11, started the validation runs directly, and added a heartbeat monitor that reports if the benchmark logs stop growing for 10 minutes.
 - **Prevention rule:** For any unattended or long-running work, set up an active heartbeat that confirms progress (log growth, row counts) at a fixed interval and alerts on stalls. Never rely only on a completion notification, which a hung job never sends. Secondary: chain dependent jobs in one script or wait on a PID or done-file, never with `pgrep -f` on a name that can appear in a launcher's arguments.
+
+### Post-autorouter stage skipped because the batch loop requests an autorouter stop — 2026-10-01
+
+- **Severity:** High
+- **Category:** Logic
+- **File(s):** `src/main/java/app/freerouting/autoroute/pipeline/RoutingPipeline.java`
+- **Pattern:** Guarding a stage that runs after `BatchAutorouter.runBatchLoop()` with `thread.isStopAutoRouterRequested()`. `AutorouteBatchLoop` calls `requestStopAutoRouter()` on every normal exit (max passes, stagnation, board-history limits), so the flag is almost always set afterwards.
+- **Root cause:** `StoppableThread` uses one state for "user stopped the autorouter" and "the autorouter finished"; the grid fallback guard treated both as a stop and never ran in the real pipeline (only in a harness that called the stage directly).
+- **Fix applied:** The guard now checks `isStopRequested()` (full stop) and `job.state != TIMED_OUT` instead.
+- **Prevention rule:** After `runBatchLoop()`, only `isStopRequested()` and the job state mean "stop"; never use `isStopAutoRouterRequested()` there. Verify any new pipeline stage end-to-end through the executable JAR and look for its log line, not only through a direct-call harness.
+
+### New-item clearance check misses violations reported only by the older item — 2026-10-01
+
+- **Severity:** High
+- **Category:** Logic
+- **File(s):** `src/main/java/app/freerouting/autoroute/grid/GridFallbackRouter.java`
+- **Pattern:** Deciding "this change added no clearance violations" by calling `Item.clearanceViolations()` only on items with `id > maxIdBefore`. `isObstacle(Item)` is not symmetric (for example `Via.isObstacle(ComponentObstacleArea)` is false while the reverse pair is reported by the full DRC), so a pair can be invisible from the new item's side.
+- **Root cause:** The grid fallback accepted transactions on the new-items check alone; on the 30-board probe the full `DesignRulesChecker.getAllClearanceViolations()` count rose by 9 across 5 boards.
+- **Fix applied:** The per-step check now also asks every older neighbour of a new item (`overlappingItemsWithClearance`) for violations that involve the new item; each transaction is additionally gated on the full `getAllClearanceViolations().size()` not growing, and the stage compares the full count at start and end.
+- **Prevention rule:** When checking "no violation added", look at both sides of every pair that involves a new item (new item and its older neighbours), and gate the final decision on the full `getAllClearanceViolations()` count before vs after.
+
+### "Unset" setting treated as a cap because the default is a sentinel — 2026-10-02
+
+- **Severity:** Medium
+- **Category:** Configuration
+- **File(s):** `src/main/java/app/freerouting/autoroute/pipeline/RoutingPipeline.java`
+- **Pattern:** Testing a limit setting with `value == null || value <= 0` to mean "no limit" when `DefaultSettings` fills the field with a sentinel such as `Integer.MAX_VALUE`.
+- **Root cause:** `router.autorouter.max_items` defaults to `Integer.MAX_VALUE`, so the "skip the grid fallback when max_items caps the work" guard skipped it on every default run.
+- **Fix applied:** The guard also treats `Integer.MAX_VALUE` as "no cap".
+- **Prevention rule:** Before testing a setting for "unset", read its value in `DefaultSettings.getSettings()`; verify a new default-on stage by grepping its log line in a default CLI run.
+
+### Stage between autorouter and optimizer breaks the phase-metrics handover — 2026-10-02
+
+- **Severity:** Medium
+- **Category:** Logic
+- **File(s):** `src/main/java/app/freerouting/autoroute/pipeline/RoutingPipeline.java`, `src/test/java/app/freerouting/fixtures/Issue872SingleLayerRoutingTest.java`
+- **Pattern:** Changing the board after `AutorouteBatchLoop` has written `job.resultPhaseMetrics.autorouter.after` but before `BatchOptimizer` writes `optimizer.before`.
+- **Root cause:** The grid fallback completed a connection after the autorouter snapshot, so `optimizerStartsFromAutorouterBestBoard` saw 1 incomplete connection vs 0.
+- **Fix applied:** After the fallback keeps a change, the pipeline refreshes `autorouter.after` from the board and adds the stage time to the autorouter phase duration.
+- **Prevention rule:** Any stage that edits the board between two phase snapshots must refresh the earlier phase's `after` snapshot (or record its own phase).
+
+### Time-budgeted stage overruns because inner steps ignore the deadline — 2026-10-02
+
+- **Severity:** Medium
+- **Category:** Logic
+- **File(s):** `src/main/java/app/freerouting/autoroute/grid/GridFallbackRouter.java`
+- **Pattern:** A stage with a wall-clock budget that checks its deadline only between top-level attempts while each attempt runs several searches with their own fixed time limits (here 10 s grid searches and 2 s maze routes).
+- **Root cause:** On the slower CI runner the grid fallback was still running at the 60 s job timeout of `Display8DigitRoutingTest`, about 25 s past its budget, so the fixture test timed out.
+- **Fix applied:** Every grid search and maze route now gets `min(own limit, time left in the stage)`, and the per-direction and per-pitch loops check the deadline.
+- **Prevention rule:** In a budgeted stage, derive every inner time limit from the remaining stage time, not from a constant; test on a run where the board actually uses the whole budget.
+
+### Pull-tight ignores its time limit on degenerate geometry — 2026-10-02
+
+- **Severity:** Medium
+- **Category:** API Misuse
+- **File(s):** `src/main/java/app/freerouting/autoroute/grid/GridFallbackRouter.java`
+- **Pattern:** Calling `RoutingBoard.optChangedArea(..., timeLimit)` inside a time-budgeted loop and trusting `timeLimit` to bound it. `TraceTightener` → `BasicBoard.normalizeTraces` → `PolylineTraceNormalization` recursion does not check the limit, so a single call can run for tens of seconds on boards with degenerate shapes.
+- **Root cause:** On `Issue229-display-8-digit-hc595.dsn` (degenerate keepout polygon) one pull-tight after a grid insert took over 20 s (seen with `jstack`), so the grid fallback overran its budget and the CI fixture test hit its 60 s job timeout.
+- **Fix applied:** The grid fallback no longer pulls its paths tight; the optimizer smooths them afterwards. On the 33-board A/B the result is unchanged (19 vs 20 fully routed, 34 vs 33 unrouted, 0 clearance) and 11% faster; the CI board's stage time went from over 20 s to 3.6 s.
+- **Prevention rule:** Do not rely on `optChangedArea`'s time limit inside a budgeted stage; when a stage overruns, take a `jstack` of the routing thread before guessing.

@@ -75,6 +75,14 @@ public class RouterSettings implements Serializable, Cloneable {
   @SerializedName("strict_drc")
   public Boolean strictDrc;
 
+  /**
+   * When true, a grid-based fallback stage runs after the batch autorouter and tries the
+   * connections it left unrouted, ripping up and rerouting other nets where needed. A change is
+   * kept only if it completes more of the board without adding clearance violations. On by default.
+   */
+  @SerializedName("grid_fallback")
+  public Boolean gridFallback;
+
   @SerializedName("job_timeout")
   public String jobTimeoutString;
 
@@ -625,6 +633,7 @@ public class RouterSettings implements Serializable, Cloneable {
     result.planeAsObstacle = this.planeAsObstacle;
     result.neckWidthUm = this.neckWidthUm;
     result.strictDrc = this.strictDrc;
+    result.gridFallback = this.gridFallback;
     result.tracePullTightAccuracy = this.tracePullTightAccuracy;
     result.viasAllowed = this.viasAllowed;
     result.automaticNeckdown = this.automaticNeckdown;
@@ -650,6 +659,11 @@ public class RouterSettings implements Serializable, Cloneable {
   /** Returns the configured necking width in micrometres, or zero when disabled. */
   public double getNeckWidthUm() {
     return neckWidthUm != null && neckWidthUm > 0 ? neckWidthUm : 0;
+  }
+
+  /** Returns whether the grid fallback stage runs after the batch autorouter. */
+  public boolean isGridFallback() {
+    return Boolean.TRUE.equals(gridFallback);
   }
 
   /** Returns whether connections with newly introduced clearance violations are rejected. */
